@@ -1,0 +1,20 @@
+{
+  "name": "spark-codex-marketplace",
+  "interface": {
+    "displayName": "Spark Codex Marketplace"
+  },
+  "plugins": [
+    {
+      "name": "spark-cli-skills",
+      "source": {
+        "source": "local",
+        "path": "./plugins/spark-cli-skills"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}
