@@ -6,7 +6,7 @@ description: >-
   look up contacts, and view team info. Use when the user asks about their
   emails, calendar, contacts, meetings, or scheduling.
 metadata:
-  version: 1.2.2
+  version: 1.3.0
   requires:
     bins:
       - spark
@@ -39,6 +39,7 @@ spark <command> [options]
 | `template` | Show a single template by ID or name with its placeholders |
 | `comment` | Post a team comment on a thread |
 | `events` | List calendar events for a time range |
+| `event` | Create, update, delete, or RSVP to a calendar event, including managing attendees / invitations |
 | `availability` | Find free time slots, optionally with attendees |
 | `contacts` | Search contacts by name or email |
 | `team` | Show team info, members, shared inboxes, assignments |
@@ -63,6 +64,7 @@ Run this first to discover what accounts, calendars, and teams are available, an
 |-------|-------------------|
 | **read-only** | List, search, and read emails, threads, folders, events, contacts, meetings, teams |
 | **triage** | Everything in read-only plus all write operations: drafts, team comments, email actions (archive, move, pin, snooze, assign, etc.), contact actions (block, accept, categorize, etc.) |
+| **send** | Everything in triage plus mail-emitting operations: sending drafts (`action send`, including scheduled "Send Later"), and the entire `event` command: `event create` / `event update` / `event delete` / `event rsvp`, including attaching or detaching attendees via `--add` / `--remove` and the iTIP REQUEST / UPDATE / CANCEL / REPLY mail that goes with them. |
 
 Access levels are configured separately for each account and each shared inbox in Spark Desktop under Settings -> AI Agents. Shared inboxes can have a different access level than the parent account - for example, a personal account may have triage access while a shared inbox under the same team is read-only or disabled.
 
@@ -204,6 +206,8 @@ spark draft --edit 1234 --subject "Updated subject" --body "Updated body"
 spark draft --reply-to 5678 --body "Thanks for the update!"
 spark draft --forward 5678 --to "manager@co.com" --body "FYI"
 spark draft --account "john@gmail.com" --to "alice@co.com" --subject "Hi" --body "..."
+spark draft --to "alice@co.com" --subject "Quick note" --body "..." --no-signature   # send without a signature
+spark draft --edit 1234 --no-signature                                                # strip the signature from an existing draft
 spark draft --to "alice@co.com" --subject "Report" --body "See attached" --attach /path/to/report.pdf
 spark draft --to "alice@co.com" --subject "Files" --body "Two files" --attach /path/to/a.pdf --attach /path/to/b.xlsx
 cat report.pdf | spark draft --to "alice@co.com" --subject "Report" --body "See attached" --attach-stream report.pdf   # pipe a file the app can't read directly
@@ -240,6 +244,7 @@ spark draft --template 124 --edit 9821 --placeholder "Project name=Acme Q3" --pl
 | `--unshare` | No | Revert an already-shared draft back to a personal draft. Requires `--edit` and is mutually exclusive with `--team` / `--user` / `--remove-user` / `--allow-send` / `--no-allow-send` **and** with content edits (`--to` / `--cc` / `--bcc` / `--subject` / `--body` / `--attach` / `--attach-stream`) - issue the edit (or per-user removal) and the unshare as separate commands. |
 | `--template` | No | Apply a saved template by ID or name. Combine with `--edit` to overlay onto an existing draft. |
 | `--placeholder` | When template has manual placeholders | Fill a manual template placeholder, format `"<name>=<value>"`. Repeat for each. Auto-fillable placeholders (recipient/self names) are not addressable here - control them via `--to` and `--account`. |
+| `--no-signature` | No | Send without a signature. Suppresses the account's per-mailbox default signature for this draft. On `--edit` it strips a signature already on the draft (the body and quoted thread are kept). Omit the flag to keep using the account default. |
 
 Explicit flags always win over template fields. Use `template <id|name>` to discover the template's manual placeholders before calling `draft --template` - missing manual placeholders cause a hard error before any draft is created. Auto-fillable placeholders that fail to resolve (e.g. recipient name with multiple `--to`) leave a localized label in the body and surface in the response as a warning.
 
@@ -335,6 +340,71 @@ Date formats: `yyyy-MM-dd`, `dd/MM/yyyy`, or `yyyy-MM-ddTHH:mm`.
 
 Run `accounts` to see available calendar accounts and calendar names.
 
+### event
+
+**Requires: send** access level on the target calendar's owning account. Every mode can emit mail through the calendar service (invitations on create / update, iTIP UPDATE / CANCEL on update / delete of attendee-bearing events, an iTIP REPLY on rsvp), and attaching attendees makes the event discoverable by the provider's invitation channel independent of email, so the whole command sits at `send`.
+
+Create, update, delete, or RSVP to a calendar event, including managing its attendees. Use `--add` / `--remove` on `create` or `update` to attach or detach attendees and send invitations / cancellations through the calendar provider (CalDAV / Google / Exchange).
+
+```bash
+spark event create --title "Sync" --start 2026-07-01T12:00 --end 2026-07-01T13:00
+spark event create --title "OOO" --start 2026-07-01 --all-day
+spark event create --title "Standup" --start 2026-07-01T09:00 --end 2026-07-01T09:15 --video-conference auto
+spark event create --title "Sync" --start 2026-07-01T10:00 --end 2026-07-01T10:30 --video-conference zoom
+spark event create --title "1:1" --start 2026-07-01T14:00 --end 2026-07-01T14:30 --calendar "user@co.com:Work"
+spark event create --title "Sync" --start 2026-07-01T12:00 --add "alice@co.com,bob@co.com"   # create + invite
+spark event update ABC-123 --title "New title"
+spark event update ABC-123 --location "Room 7"
+spark event update ABC-123 --video-conference meet   # add a meeting link
+spark event update ABC-123 --add alice@co.com --remove bob@co.com   # swap attendees
+spark event delete ABC-123
+spark event rsvp ABC-123 accept     # calendar event ID
+spark event rsvp ABC-123 decline
+spark event rsvp 44268 maybe        # invitation email message ID
+```
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `mode` | Yes | `create`, `update`, `delete`, or `rsvp` (positional). |
+| `event_id` | For `update`/`delete`/`rsvp` | Positional, second arg. For `update`/`delete`: a calendar event ID (use `events`). For `rsvp`: either a calendar event ID **or** the message ID of the invitation email (use `emails` / `thread`). |
+| `status` | For `rsvp` | RSVP status (positional, third arg): `accept`, `decline`, or `maybe`. |
+| `--title` | No | Event title / summary. |
+| `--start` | Yes (for `create`) | Start date/time (`yyyy-MM-dd`, `dd/MM/yyyy`, `yyyy-MM-ddTHH:mm`, or `yyyy-MM-ddTHH:mm:ssXXX`). |
+| `--end` | No | End date/time. |
+| `--all-day` | No | Mark the event as all-day. |
+| `--description` | No | Event description / notes. |
+| `--alerts` | No | Comma-separated alert offsets (`Ns` for N seconds before, e.g. `300s,600s`) or absolute dates. |
+| `--location` | No | Event location text. |
+| `--video-conference` | No | Attach a video conference (value required). `auto` auto-picks the account's type (recently used, else default); `meet`, `zoom`, or `teams` selects a specific one and errors if the account doesn't support it. |
+| `--calendar` | No | Target calendar for `create`. Format: `email@domain.com` (account's default calendar) or `email@domain.com:Name` (specific named calendar). |
+| `--add` | No | Attendee email address(es) to invite (create / update only). Repeat the flag or pass a comma-separated list. New attendees receive an iTIP REQUEST (invitation). |
+| `--remove` | No | Attendee email address(es) to remove (update only). Repeat the flag or pass a comma-separated list. Removed attendees receive an iTIP CANCEL. The organizer cannot be removed. |
+
+**Attendees (`--add` / `--remove`):**
+- Only valid on `create` and `update`; passing them to `delete` or `rsvp` is refused. Combine both in one `update` to swap attendees - removals run before additions.
+- Adding or removing attendees always emits iTIP mail (REQUEST / CANCEL). An event with no attendees stays invisible to the calendar service's invitation channel.
+- Attaching attendees makes the event discoverable by the calendar provider's invitation channel (including Google Calendar's same-provider auto-add behavior), independent of email delivery - which is why the whole command requires `send`.
+
+**`event update` semantics:**
+- `--video-conference` attaches a meeting link (`meet` / `zoom` / `teams`, or `auto`) to an existing event, generated through the same path as `create`. On an event with attendees this is a shared change, so it sends the iTIP UPDATE.
+- Event with **no attendees** → local update, no mail goes out.
+- Event **with attendees** → update + iTIP UPDATE sent to all attendees so their calendars reflect the new state. Output reports the attendee count.
+- An alerts-only edit is a personal reminder and notifies nobody, even on an event with attendees.
+
+**`event delete` semantics:**
+- Event with **no attendees** → local delete, no mail goes out.
+- Event **with attendees** → delete + iTIP CANCEL sent to all attendees so their calendars get cleaned up too. Output reports the attendee count. Deleting without the cancellation would orphan the invitation on attendees' calendars (most visibly on Google's same-provider auto-add channel).
+
+**`event rsvp` semantics:**
+- Sets *your own* attending status on an invitation: `accept`, `decline`, or `maybe` (alias for tentative). Responding emits an iTIP REPLY back to the organizer.
+- The id can be **either** a calendar event ID **or** the message ID of the invitation email. Many providers (Google included) leave an unanswered invite sitting in the inbox without adding it to the calendar, so when the user asks you to respond to an invitation, look it up with `emails` / `thread` and pass that **message ID** - you do not need a calendar event. When the invite *has* been auto-added to the calendar, a calendar event ID works too.
+- For a message ID, the reply mirrors Spark Desktop: it updates the matching calendar event if one is synced, otherwise it mails the iTIP REPLY straight to the organizer (and, on `accept`, adds the event to your calendar).
+- Errors if the target is not an invitation you can respond to (a plain email, your own organized event with no RSVP, or a provider that does not allow responding).
+- For a calendar event, re-RSVPing to the status you already hold is a no-op and reported as such.
+
+Typical flow when scheduling a new meeting: call `event create ...` to lay down the event first, confirm the time and details with the user, then call `event update <event-id> --add ...` to push invitations - so the user can review (or you can revise) the event before any external email goes out. When you already have the attendees, `event create ... --add ...` does both in one step.
+
+Run `accounts` to see writable calendars and the access level on each account.
 
 ### availability
 
@@ -437,6 +507,57 @@ Supported actions:
 - `delegationComplete` - Mark the delegation as complete
 - `delegationReopen` - Reopen a completed delegation
 
+**`send` verb (requires send access):**
+
+Sends an existing draft (created with `spark draft` or in Spark Desktop) through the owning account's outbound mail pipeline. Same validation as the desktop composer: the draft must live on an account whose access level is **send** (Settings -> AI Agents), have at least one recipient, a non-empty subject, all attachments uploaded, and no unresolved manual template placeholders.
+
+```bash
+spark action send 1234
+```
+
+Output reports the original draft ID and the PK of the sent message:
+
+`Draft 1234 sent. Sent message ID: 5678.`
+
+Typical flow: `spark draft ...` to compose, review the draft, then `spark action send <pk>` to commit. Splitting the two operations means you (or the user) can edit the draft before any external mail is emitted - `spark draft` alone never sends.
+
+`send` accepts multiple draft IDs in one call (each runs through validation independently and the response reports per-draft success/failure), but the common case is a single id.
+
+**Scheduled send ("Send Later"):** pass an optional `--date` to schedule the draft instead of sending it now. The date must be in the future (formats: `yyyy-MM-dd`, `dd/MM/yyyy`, `yyyy-MM-ddTHH:mm`); a past or malformed date is rejected before anything is sent.
+
+```bash
+spark action send 1234 --date 2026-04-10T09:00
+```
+
+Output confirms the schedule: `Draft 1234 scheduled to send on 2026-04-10 09:00. Message ID: 5678.` The message sits in the outbox and is delivered at that time.
+
+**Manage an already-scheduled ("Send Later") message** by targeting its message ID with `send`:
+
+- **Reschedule:** `send` with a new `--date` updates the existing schedule (it is no longer a plain draft, so this does not create a new message):
+
+```bash
+spark action send 5678 --date 2026-04-12T15:00
+```
+
+Output: `Message 5678 rescheduled to send on 2026-04-12 15:00. Message ID: 5678.`
+
+- **Send now:** `send` with no `--date` drops the schedule and sends it immediately:
+
+```bash
+spark action send 5678
+```
+
+Output: `Scheduled message 5678 sent now. Message ID: 5678.`
+
+- **Unschedule:** `unschedule` cancels the schedule and returns the message to drafts (so you can edit it or send it later):
+
+```bash
+spark action unschedule 5678
+```
+
+Output: `Message 5678 unscheduled - returned to drafts. Find it in the Drafts folder.` Clearing the schedule mints a fresh draft, so the original ID (5678) no longer resolves - re-list the Drafts folder to get the new draft ID before editing or sending it.
+
+Both `send` (with or without `--date`) on a scheduled message and `unschedule` require send access on the owning account.
 
 Options:
 - `--date` - required for `snooze` and `changeReminder`, optional for `assign` as due date (formats: `yyyy-MM-dd`, `dd/MM/yyyy`, `yyyy-MM-ddTHH:mm`)
