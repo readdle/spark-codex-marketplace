@@ -22,7 +22,7 @@
   "interface": {
     "displayName": "Spark",
     "shortDescription": "Email and calendar workflows for the Spark CLI",
-    "longDescription": "Give Codex unified access to your email, calendar, contacts, and meeting notes through Spark on macOS and Windows. Works across Gmail, Outlook, iCloud, Exchange, and IMAP accounts. Codex can search semantically, read threads and attachments, check availability, draft replies, and organize messages across every connected account.",
+    "longDescription": "Give Codex unified access to your email, calendar, contacts, and meeting notes through Spark on macOS and Windows. Works across Gmail, Outlook, iCloud, Exchange, and IMAP accounts. Codex can search semantically, read threads and attachments, check availability, draft replies, and organize messages across every connected account. Requires Spark Desktop with the Spark CLI enabled (Settings → AI Agents → Spark CLI Setup).",
     "developerName": "Spark Mail Limited",
     "category": "Productivity",
     "capabilities": [

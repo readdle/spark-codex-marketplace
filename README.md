@@ -2,6 +2,12 @@
 
 Curated [Codex](https://developers.openai.com/codex) plugin marketplace for [Spark](https://sparkmailapp.com). Add this marketplace to Codex to browse and install Spark plugins.
 
+## Requirements
+
+- macOS or Windows with a recent build of [Spark Desktop](https://sparkmailapp.com), signed in to at least one account.
+- Spark CLI enabled: in Spark, go to **Settings → AI Agents → Spark CLI Setup** and follow the prompts.
+- Per-account access levels - `read-only`, `triage` (everything in read-only plus drafts, comments, and email/contact actions), or `send` (everything in triage plus sending mail and calendar invitations) - configured in **Settings → AI Agents -> Spark CLI Access**. Recipes and personas declare the level they need; running one against an account with insufficient access returns an error explaining how to upgrade.
+
 ## Adding the marketplace
 
 ```bash
